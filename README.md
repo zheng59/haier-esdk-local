@@ -1,5 +1,10 @@
 # 海尔空调本地直连（Home Assistant 自定义集成）
 
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
+[![Release](https://img.shields.io/github/v/release/zheng59/haier-esdk-local?sort=semver&color=green)](https://github.com/zheng59/haier-esdk-local/releases)
+[![License](https://img.shields.io/github/license/zheng59/haier-esdk-local)](https://github.com/zheng59/haier-esdk-local/blob/main/LICENSE)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-%E2%89%A52024.11-41BDF5.svg)](https://www.home-assistant.io/)
+
 把家里那台海尔空调接进 Home Assistant，**全程本地**：不加云端、不改硬件、不拆机。
 HA ↔ 空调 IP:56800，明文私有协议（EPP），没有任何账号 / 密钥 / 握手。
 
