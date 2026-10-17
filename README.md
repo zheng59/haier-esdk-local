@@ -69,6 +69,10 @@ HA ↔ 空调 IP:56800，明文私有协议（EPP），没有任何账号 / 密�
 2. 填仓库地址 `https://github.com/zheng59/haier-esdk-local`，类别选 **Integration**
 3. 装好后重启 HA → 设置 → 设备与服务 → 添加集成 → 搜 `Haier eSDK Local`
 
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=haier_esdk)
+
+重启完也可以直接点上面这个徽章，一步跳到「添加集成」的 `haier_esdk` 表单，省得自己搜。
+
 ### 方式 B：手动拷贝
 
 把 `custom_components/haier_esdk/` 整个目录拷进 HA 的配置目录。
