@@ -51,6 +51,18 @@ def main() -> int:
               lambda s: s.with_target(27.5),
               lambda s: abs(s.target_temperature - 27.5) < 0.01)
 
+        probe(cli, "模式 0x05",
+              lambda s: s.with_byte(11, 0x05),
+              lambda s: s.mode == "0x05")
+
+        probe(cli, "模式 0x06",
+              lambda s: s.with_byte(11, 0x06),
+              lambda s: s.mode == "0x06")
+
+        probe(cli, "模式 0x07",
+              lambda s: s.with_byte(11, 0x07),
+              lambda s: s.mode == "0x07")
+
         probe(cli, "健康 关",
               lambda s: s.with_health(False),
               lambda s: not s.health)
