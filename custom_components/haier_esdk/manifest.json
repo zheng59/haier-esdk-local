@@ -1,14 +1,14 @@
 {
   "domain": "haier_esdk",
   "name": "Haier eSDK Local",
-  "version": "0.2.1",
-  "documentation": "https://github.com/zheng59/haier-esdk-local",
-  "issue_tracker": "https://github.com/zheng59/haier-esdk-local/issues",
   "codeowners": ["@zheng59"],
   "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/zheng59/haier-esdk-local",
   "integration_type": "device",
   "iot_class": "local_polling",
-  "dependencies": [],
+  "issue_tracker": "https://github.com/zheng59/haier-esdk-local/issues",
+  "loggers": ["custom_components.haier_esdk"],
   "requirements": [],
-  "loggers": ["custom_components.haier_esdk"]
+  "version": "0.2.1"
 }
