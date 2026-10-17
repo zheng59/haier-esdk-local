@@ -16,6 +16,9 @@ from haier_protocol import HaierStatus              # noqa: E402
 
 HOST = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.100"
 
+# 室温 / 湿度 / 主板交换计数：自己就会变，比对「有没有还原」时要排除
+VOLATILE = {1, 3, 5}
+
 
 def probe(cli: HaierClient, name: str, mutate, check) -> None:
     baseline = cli.read_status()
@@ -29,10 +32,12 @@ def probe(cli: HaierClient, name: str, mutate, check) -> None:
     mark = "✓ 支持" if accepted else "✗ 未生效"
     detail = f"回读 {after.raw.hex()}"
     print(f"  {name:<14} {mark}   {detail}")
-    # 整块还原成基线
+    # 整块还原成基线（只比「设置类」字节，室温/湿度/计数本来就会变）
     back = cli.apply(HaierStatus(bytes(base_raw)))
-    if back.raw != base_raw:
-        print(f"  {name:<14} ⚠ 还原后与基线不一致：{back.raw.hex()} vs {base_raw.hex()}")
+    drift = [i for i in range(24) if back.raw[i] != base_raw[i] and i not in VOLATILE]
+    if drift:
+        print(f"  {name:<14} ⚠ 还原后与基线不一致："
+              f"{[(f'c{i}', f'0x{back.raw[i]:02x}', f'0x{base_raw[i]:02x}') for i in drift]}")
     time.sleep(0.8)
 
 
@@ -66,6 +71,30 @@ def main() -> int:
               lambda s: s.with_bits(19, 0x04, True),
               lambda s: s.preset == "quiet")
 
+        probe(cli, "摆风位c19b0",
+              lambda s: s.with_bits(19, 0x01, True),
+              lambda s: bool(s.raw[19] & 0x01))
+
+        probe(cli, "水平摆风",
+              lambda s: s.with_bits(19, 0x01 | 0x08, True),
+              lambda s: bool(s.raw[19] & 0x08))
+
+        probe(cli, "垂直摆风",
+              lambda s: s.with_bits(19, 0x01 | 0x10, True),
+              lambda s: bool(s.raw[19] & 0x10))
+
+        probe(cli, "水平+垂直",
+              lambda s: s.with_bits(19, 0x01 | 0x08 | 0x10, True),
+              lambda s: bool(s.raw[19] & 0x18) == 0x18)
+
+        probe(cli, "华氏 c16b3",
+              lambda s: s.with_bits(16, 0x08, True),
+              lambda s: bool(s.raw[16] & 0x08))
+
+        probe(cli, "十度/远离",
+              lambda s: s.with_bits(17, 0x40, True),
+              lambda s: bool(s.raw[17] & 0x40))
+
         probe(cli, "遥控锁 c16=0x80",
               lambda s: s.with_bits(16, 0x80, True),
               lambda s: bool(s.raw[16] & 0x80))
@@ -74,7 +103,9 @@ def main() -> int:
         final = cli.read_status()
         print(f"\n收尾：{_fmt(final)}")
         print(f"  原始块：{final.raw.hex()}")
-        print("  与基线一致：", final.raw == base.raw)
+        drift = [(f"c{i}", f"0x{base.raw[i]:02x}->0x{final.raw[i]:02x}")
+                 for i in range(24) if final.raw[i] != base.raw[i] and i not in VOLATILE]
+        print("  与基线一致：", "✓ 是" if not drift else f"⚠ 否 {drift}")
     return 0
 
 
