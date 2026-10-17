@@ -269,6 +269,7 @@ custom_components/haier_esdk/     ← 集成本体（对外分发就这一份）
 ├── binary_sensor.py              故障告警（带位图与置位号）
 ├── diagnostics.py                诊断导出（连接参数 / 状态块 / 故障位图）
 ├── config_flow.py                填 IP → 现场验活 → 建设备；选项里可改 IP / 端口 / 轮询间隔
+├── brand/                        品牌图标（icon.png 256 / icon@2x.png 512）
 └── manifest.json / strings.json / translations/
 
 component_loader.py              让测试和工具直接加载集成里的 protocol/client（造空壳包，
