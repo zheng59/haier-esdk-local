@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "连接海尔空调（本地直连）",
+        "description": "填空调在局域网里的 IP 地址。端口默认 56800（eSDK 一代 Wi-Fi 模块）。整个过程不上云。",
+        "data": {
+          "host": "IP 地址",
+          "port": "端口",
+          "scan_interval": "轮询间隔（秒）"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "连不上这台空调：确认 IP 正确、和 Home Assistant 在同一网段，且没有别的客户端正占用它"
+    },
+    "abort": {
+      "already_configured": "这台空调已经添加过了"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "选项",
+        "data": {
+          "scan_interval": "轮询间隔（秒）"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "fault": {
+        "name": "故障告警"
+      }
+    },
+    "switch": {
+      "health": {
+        "name": "健康模式"
+      },
+      "remote_lock": {
+        "name": "遥控锁"
+      }
+    }
+  }
+}

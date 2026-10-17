@@ -1,0 +1,8 @@
+{
+  "name": "Haier eSDK Local",
+  "content_in_root": false,
+  "render_readme": true,
+  "homeassistant": "2024.11.0",
+  "zip_release": false,
+  "domains": ["haier_esdk"]
+}

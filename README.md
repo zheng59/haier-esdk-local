@@ -1,0 +1,253 @@
+# 海尔空调本地直连（Home Assistant 自定义集成）
+
+把家里那台海尔空调接进 Home Assistant，**全程本地**：不加云端、不改硬件、不拆机。
+HA ↔ 空调 IP:56800，明文私有协议（EPP），没有任何账号 / 密钥 / 握手。
+
+> 实测设备：海尔 **KFR-35G/BAA21AU1**（挂的是 KZW 一代 eSDK Wi-Fi 模块，固件 `e_1.2.02`）
+> 集成域名 `haier_esdk`，模块型号族「eSDK 一代 / 56800 明文 EPP」。
+
+---
+
+## 1. 为什么这台不用捣鼓 localKey
+
+海尔的 Wi-Fi 模块有好几代，**只有一代 eSDK 的 56800 端口是明文透传**：
+
+| 代 | 端口 | 要不要密钥 |
+| --- | --- | --- |
+| **eSDK 一代**（本机） | **56800** | **不要**，连上就能收发 |
+| uSS / 二代（hOn App 那代） | 12334 | 要 localKey，得先从云上取 |
+
+本机连上 56800 后模块会**主动推**一帧故障位图 + 一帧完整状态，随后静默；
+发一条读状态请求就回一条状态 —— 不需要任何认证。
+
+## 2. 能做什么（都在真机上逐条验过）
+
+| 能力 | 状态 | 备注 |
+| --- | --- | --- |
+| 开关机 | ✅ | 专用命令 `4D02/4D03` |
+| 模式：自动 / 制冷 / 制热 / 除湿 / 送风 | ✅ | `4D5F` 回填控制块 |
+| 设定温度 16–30℃ | ✅ | **整度**；半度会被主板回 `INVALID` 拒掉 |
+| 风速：低 / 中 / 高 / 自动 | ✅ | |
+| 摆风 | ✅ | 控制块 `c15` |
+| 健康模式 | ✅ | `c17` bit3 → 独立开关实体 |
+| 遥控锁 | ✅ | `c16` bit7 → 独立开关实体（默认不启用） |
+| 读室温 / 湿度 | ✅ | 主板自带传感器，随轮询更新 |
+| 故障位图 | ✅ | 连接时白拿，暴露成 `故障告警` 二进制传感器 |
+| 显示屏开关 / 极速 / 静音 / 半度 | ❌ | 主板收到即忽略（已在能力探测脚本里确认） |
+
+**闭环**：每条写命令都会回一帧带新状态的 STATUS，而且可以随时再读一次二次确认 ——
+不是红外那种「盲发」。
+
+## 3. 装到 Home Assistant
+
+### 方式 A：HACS（自定义仓库）
+
+1. HACS → 集成 → 右上角 `⋮` → *自定义存储库*
+2. 填本仓库地址，类别选 **Integration**
+3. 装好后重启 HA → 设置 → 设备与服务 → 添加集成 → 搜 `Haier eSDK Local`
+
+### 方式 B：手动拷贝
+
+把 `custom_components/haier_esdk/` 整个目录拷进 HA 的配置目录。
+
+**Docker（容器里跑 HA）**
+
+```bash
+# 1. 找到 HA 容器名
+docker ps --format '{{.Names}}\t{{.Image}}' | grep -i homeassistant
+
+# 2. 拷进去（把 homeassistant 换成你的容器名）
+docker exec homeassistant mkdir -p /config/custom_components
+docker cp custom_components/haier_esdk homeassistant:/config/custom_components/
+
+# 3. 重启并盯日志（看到「海尔空调已接入」就成）
+docker restart homeassistant
+docker logs -f homeassistant 2>&1 | grep -i -E 'haier|custom_components'
+```
+
+> 如果是 bind mount（`-v /宿主机/ha-config:/config`），直接往宿主机那个目录拷也行，
+> 拷完照样重启容器。`docker cp` 进容器的文件属主是 root，标准镜像里 HA 就跑在 root 下，不用管。
+
+**HA OS / Supervised**：拷到 `/config/custom_components/`（Samba 或 SSH add-on 都行）后重启。
+
+拷完检查一下目录长这样（`manifest.json` 必须直接在这一层，不能再套一层文件夹）：
+
+```
+/config/custom_components/haier_esdk/
+├── __init__.py  climate.py  switch.py  binary_sensor.py
+├── protocol.py  client.py  coordinator.py  config_flow.py  const.py
+├── manifest.json  strings.json
+└── translations/zh-Hans.json  translations/en.json
+```
+
+### 填什么
+
+| 字段 | 值 |
+| --- | --- |
+| IP 地址 | 空调在局域网里的 IP（例如 `192.168.1.100`） |
+| 端口 | `56800`（默认，不用改） |
+| 轮询间隔 | 默认 30 秒。**别低于 10 秒**：模块同时只接受一个 TCP 连接，且对高频连接有短时限流 |
+
+保存时集成会现场连一次做验证，并自动从模块里读出设备 ID（MAC `001122334455`）作为
+唯一标识 —— 所以同一台空调不会被重复添加。
+
+> **IP 建议固定**：在路由器里给空调的 MAC 做静态 DHCP 绑定，否则换 IP 后要在
+> 集成里改（集成 → 配置 → 修改 IP）。
+
+> 要求 HA ≥ 2024.11（实测环境 2026 版一路可用）。
+
+### 装完怎么自查
+
+1. 日志里应有：`海尔空调已接入：192.168.1.100（设备 001122334455）`
+2. 设备页会多出一个「Haier 空调」设备，带 1 个 climate + 3 个子实体
+3. `climate.海尔空调` 的属性里能看到实时室温/湿度 —— 说明轮询通了
+4. 点一下开关机，**空调会真的响**（写命令真到了主板，不是假应答）
+
+## 4. 装完长什么样
+
+- **climate.海尔空调**：开关 / 模式 / 设定温度 / 风速 / 摆风，附带实时室温与湿度
+- **switch.健康模式**
+- **switch.遥控锁**（默认隐藏，需要在实体的「已禁用的实体」里启用）
+- **binary_sensor.故障告警**（默认隐藏；位图非全 0 即告警）
+
+## 5. 协议速查（给自己以后维护用）
+
+### 5.1 外层信封（80 字节头 + EPP 帧）
+
+```
+魔数(4) | 0×36 | MAC(12 ASCII) | 0×20 | 序号(BE32) | 帧长(BE32) | EPP 帧
+```
+
+- **请求方向魔数 = `00 00 27 14`**，模块→客户端 = `00 00 27 15`。
+  用错方向模块**不报错、也不转发**，直接把帧吞掉 —— 这是本项目踩过的最大的坑。
+- MAC 12 字节 ASCII 在偏移 40–51（`303031313232333334343535` = `001122334455`），
+  同时也是「设备 ID」，可以直接拿来当 HA 的唯一标识。
+- 序号 BE32 在偏移 72–75，应答里原样回传；帧长 BE32 在偏移 76–79。
+
+### 5.2 EPP 帧
+
+```
+ff ff | L | addr(6) | type | data | checksum
+L        = 6 + 1 + len(data) + 1
+checksum = (L + addr + type + data) & 0xFF       ← 累加和，不是补码
+```
+
+| type | 名字 | 说明 |
+| --- | --- | --- |
+| `0x01` | CONTROL | 客户端下发 |
+| `0x02` | STATUS | 状态应答（data = 命令字 + 24 字节控制块） |
+| `0x03` | INVALID | **命令被拒**（例如设了不支持的温度） |
+| `0x04` | ALARM | 故障位图（连接时主动推） |
+| `0x06` | REPORT | 状态上报（连接时主动推） |
+| `0x61` | GET_VERSION | 版本/能力位（payload `00 07`） |
+| `0x73` / `0x74` | GET_ALARM / 应答 | 读故障位图 |
+
+地址用 `00…00` 或 `00…01` 都能通（`ADDR_AC` / `ADDR_MODULE`）。
+
+### 5.3 命令字
+
+| 命令 | 含义 |
+| --- | --- |
+| `4D01` | 读状态 |
+| `4D02` / `4D03` | 开机 / 关机 |
+| `4D5F` | **设置**：payload = `4D5F` + 24 字节控制块，整块回填 |
+
+### 5.4 24 字节控制块（`data[2:26]`）
+
+| 下标 | 含义 |
+| --- | --- |
+| `c1` | 室温（℃） |
+| `c3` | 湿度（%） |
+| `c5` | cntrl —— **发送时必须置 0**；主板自己会用它记交换计数（回读会看到 1、2…） |
+| `c11` | 模式：0 自动 / 1 制冷 / 2 制热 / 3 送风 / 4 除湿 |
+| `c13` | 风速：0 高 / 1 中 / 2 低 / 3 自动 |
+| `c15` | 摆风（1 = 上下左右都摆；本位为 0 时由 c19 的位决定） |
+| `c16` | bit3 华氏 / **bit7 遥控锁** |
+| `c17` | **bit0 开关** / bit3 健康 / bit4 压缩机（本机一直读到 0）/ bit5 半度 / bit6 十度 |
+| `c19` | bit0 用 c19 的摆风位 / bit1 极速 / bit2 静音 / bit3 水平摆风 / bit4 垂直摆风 / bit5 显示屏关 |
+| `c23` | 设定温度 = 值 + 16 |
+
+> 写操作的通用姿势（和 ESPHome 的 smartair2 一致）：
+> **先读回当前 24 字节 → 只改要改的字段 → `c5` 归零 → `4D5F` 整块回填**。
+> 只发 `4D5F` 不带块、或块里字段瞎猜，主板都不会理你。
+
+### 5.5 模块脾气
+
+- **同时只有一个 TCP 连接**；连上就被推一帧状态（等于白拿一次读数）。
+- 快速重连会被限流（表现为推送阶段直接断/0 字节）。两次会话之间留几秒最稳。
+- 被拒的命令回 `type=0x03 INVALID`（我们转成 `HaierCommandRejected` 抛出来）。
+
+## 6. 命令行工具（不装 HA 也能用）
+
+```bash
+python3 tools/haier_cli.py 192.168.1.100 read          # 读状态
+python3 tools/haier_cli.py 192.168.1.100 fault         # 读故障位图
+python3 tools/haier_cli.py 192.168.1.100 off           # 关机
+python3 tools/haier_cli.py 192.168.1.100 temp 26       # 设 26℃
+python3 tools/haier_cli.py 192.168.1.100 mode dry      # 除湿
+python3 tools/haier_cli.py 192.168.1.100 fan auto      # 风速自动
+python3 tools/haier_cli.py 192.168.1.100 swing on      # 摆风
+python3 tools/haier_caps.py 192.168.1.100              # 逐项探测主板支持哪些字段（改完自动还原）
+```
+
+## 7. 代码结构
+
+```
+custom_components/haier_esdk/     ← 集成本体（对外分发就这一份）
+├── protocol.py                   信封 / EPP / 24 字节控制块的编解码（纯函数，好测）
+├── client.py                     同步 TCP 客户端（读 / 写 / set_hvac；HA 在执行器里跑它）
+├── coordinator.py                轮询协调器：串行化 + 连接时顺手收故障位图
+├── climate.py                    空调实体
+├── switch.py                     健康模式 / 遥控锁
+├── binary_sensor.py              故障告警
+├── config_flow.py                填 IP → 现场验活 → 建设备
+└── manifest.json / strings.json / translations/
+
+component_loader.py              让测试和工具直接加载集成里的 protocol/client（造空壳包，
+                                 绕过依赖 homeassistant 的 __init__.py）—— 保证**只有一份实现**
+haier_protocol.py / haier_client.py   根目录兼容层（转发到上面那份，给老脚本用）
+tools/                           命令行工具 + 能力探测
+tools/explore/                   逆向/排查期的一次性脚本（存档备查）
+tests/                           52 个单元测试
+```
+
+## 8. 跑测试
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+52 个用例，全部离线（不碰真机）：
+
+- **协议层 / 客户端**：校验和、信封布局、请求魔数、真机抓包的 216 字节突发解析、
+  半条消息的拼接、控制块解码与改写、`set_hvac` 的收发序列、`INVALID` 处理、对端关闭…
+  （用假 socket 回放真机字节，不是 mock 掉业务逻辑）
+- **实体层**：模式/风速双向映射、开关机语义、关机改温度自动开机、
+  健康/遥控锁位、故障传感器、设备信息与唯一 ID（用最小 HA 替身）
+
+## 9. 排查
+
+| 现象 | 原因 / 处理 |
+| --- | --- |
+| 添加集成时报「连不上」 | IP 不对 / 不同网段 / 手机 App 或别的客户端正占着（模块只支持单连接，先把 App 划掉） |
+| 实体长期「不可用」 | 轮询间隔太短被限流，改成 30 秒以上；或空调 IP 变了 |
+| 改温度没反应 | 只支持整度 16–30；半度/越界会被 `INVALID` 拒掉（HA 里步进已固定 1℃） |
+| 开关/模式改了但界面没变 | 下一轮轮询（≤30 秒）会拉回来；也可以在集成上手动「重新加载」 |
+| 想确认主板到底支不支持某字段 | `python3 tools/haier_caps.py <空调IP>`（改一项验一项，立刻还原） |
+
+## 10. 出处 / 参考
+
+本项目是对着这几份公开实现把方言对出来的：
+
+- [esphome/esphome · `components/haier/smartair2_climate.cpp`](https://github.com/esphome/esphome/blob/dev/esphome/components/haier/smartair2_climate.cpp)
+  —— 控制消息 `4D5F` + 24 字节块、`4D02/4D03`、能力位（**本机方言就是它的 smartair2 命令集**）
+- [KoalaBear84/HaierAC · `Program.cs`](https://github.com/KoalaBear84/HaierAC/blob/master/Program.cs)
+  —— 请求信封（魔数 `2714`、序号、帧长）的权威来源
+- [paveldn/HaierProtocol](https://github.com/paveldn/HaierProtocol) —— FrameType 枚举
+
+## 11. 已知取舍
+
+- 不做的：显示屏开关、极速、静音、半度（主板忽略）；压缩机状态（本机读不到，`hvac_action`
+  按模式推断）。
+- 没接的：UDP 7083 自动发现（一代模块的应答里没有可靠的端口 TLV），所以填 IP 是手动的。
+- 不碰云端：整条链路只有 LAN 内的明文 TCP。
