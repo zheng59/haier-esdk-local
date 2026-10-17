@@ -57,8 +57,16 @@ HA ↔ 空调 IP:56800，明文私有协议（EPP），没有任何账号 / 密�
 
 ### 方式 A：HACS（自定义仓库）
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=zheng59&repository=haier-esdk-local&category=integration)
+
+点上面的徽章 → 会直接在你自己的 HA 里打开本仓库的 HACS 页面（自定义仓库确认一下即可）。
+该链接是 HA 官方的 [My Home Assistant](https://my.home-assistant.io/) 跳转，只在浏览器本地生效，**不会改动你的实例**；
+需要 HA ≥ 2021.3 且启用了 `my` 集成（默认就有）。
+
+手动加也行：
+
 1. HACS → 集成 → 右上角 `⋮` → *自定义存储库*
-2. 填本仓库地址，类别选 **Integration**
+2. 填仓库地址 `https://github.com/zheng59/haier-esdk-local`，类别选 **Integration**
 3. 装好后重启 HA → 设置 → 设备与服务 → 添加集成 → 搜 `Haier eSDK Local`
 
 ### 方式 B：手动拷贝
