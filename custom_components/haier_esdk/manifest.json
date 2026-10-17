@@ -1,7 +1,7 @@
 {
   "domain": "haier_esdk",
   "name": "Haier eSDK Local",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "documentation": "https://github.com/zhengweijie/haier-esdk-local",
   "issue_tracker": "https://github.com/zhengweijie/haier-esdk-local/issues",
   "codeowners": [],

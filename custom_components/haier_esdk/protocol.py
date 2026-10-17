@@ -25,6 +25,10 @@ smartair2 状态块（type=0x02/0x06 的 data 前 2 字节为命令字，后面 
     c17 bit0=开关  bit3=健康  bit5=半度  bit6=十度
     c19 bit0=摆风位  bit1=极速 bit2=静音 bit3=水平摆风 bit4=垂直摆风 bit5=显示关
     c23 设定温度（+16℃）
+
+本机（KFR-35G/BAA21AU1，2026-10-17 实测）支持：开关 / 模式 / 整度温度 / 风速 / 摆风(c15) /
+健康 / 遥控锁 / c19 bit0；**不支持**（主板直接丢弃）：显示屏开关、极速、静音、半度、
+华氏、十度、水平/垂直摆风细分。
 """
 from __future__ import annotations
 
@@ -239,6 +243,14 @@ class HaierStatus:
         s.raw = s.raw[:13] + bytes([value]) + s.raw[14:]
         return s
 
+    def with_swing(self, on: bool) -> "HaierStatus":
+        """摆风开关（写 c15）。**同时把 c19 bit0 清 0**。
+
+        实测（2026-10-17）：`c19` bit0 是「改用 c19 的位判摆风」的总闸，App / 遥控器会把它置上；
+        一旦置上，主板就忽略 `c15`，我们写摆风会没反应。写入时归零，保证 `c15` 说了算。
+        """
+        return self.with_byte(15, 1 if on else 0).with_bits(19, 0x01, False)
+
     def with_health(self, on: bool) -> "HaierStatus":
         return self.with_bits(17, 0x08, on)
 
@@ -273,3 +285,15 @@ class HaierStatus:
             "preset": self.preset,
             "raw": self.raw.hex(),
         }
+
+
+# ----------------------------------------------------------------- 故障位图
+def alarm_bits(bitmap: bytes) -> list[int]:
+    """把故障位图摊成「置位的位号」。
+
+    位号约定：`位号 = 字节下标 × 8 + 字节内位下标`，**字节内低位在前**（和 c17/c19 那些
+    位开关的读法一致）。厂家没公开位图含义，所以这里只给位号 —— 排障时拿它对照、
+    报给厂商或社区，别自己猜故障名。
+    """
+    return [index * 8 + bit for index, byte in enumerate(bitmap)
+            for bit in range(8) if (byte >> bit) & 1]

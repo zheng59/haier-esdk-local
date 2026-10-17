@@ -14,7 +14,7 @@ import component_loader  # noqa: F401,E402  导入即加载集成里的 protocol
 
 from haier_esdk.protocol import (ADDR_AC, ADDR_MODULE, MAGIC_REQUEST, MAGIC_RESPONSE,  # noqa: E402
                                  TYPE_ALARM, TYPE_REPORT, TYPE_STATUS, HaierStatus,
-                                 build_request, epp_frame, parse_envelopes, parse_epp)
+                                 alarm_bits, build_request, epp_frame, parse_envelopes, parse_epp)
 
 DEVICE_ID = b"001122334455"
 
@@ -138,6 +138,26 @@ class TestStatus(unittest.TestCase):
         self.assertNotEqual(self.status.raw[5], 0)
         self.assertEqual(self.status.for_sending()[5], 0)
         self.assertEqual(len(self.status.for_sending()), 24)
+
+    def test_with_swing_clears_c19_bit0(self) -> None:
+        """写摆风要顺手把 c19 bit0（「改用 c19 判摆风」的总闸）清掉，否则主板忽略 c15。
+
+        真机实测（2026-10-17）：App / 遥控器会把 c19 bit0 置上，之后写 c15 就没反应了。
+        """
+        gated = self.status.with_bits(19, 0x01, True)
+        self.assertTrue(gated.raw[19] & 0x01)
+        on = gated.with_swing(True)
+        self.assertEqual(on.raw[15], 1)
+        self.assertFalse(on.raw[19] & 0x01)
+        off = gated.with_swing(False)
+        self.assertEqual(off.raw[15], 0)
+        self.assertFalse(off.raw[19] & 0x01)
+
+    def test_alarm_bits(self) -> None:
+        """故障位图 → 置位号：字节下标×8 + 位下标，字节内低位在前。"""
+        self.assertEqual(alarm_bits(b"\x00" * 6), [])
+        self.assertEqual(alarm_bits(bytes([0x01, 0x00, 0x80])), [0, 23])
+        self.assertEqual(alarm_bits(bytes([0x0F, 0x5A])), [0, 1, 2, 3, 9, 11, 12, 14])
 
     def test_wrong_block_size_rejected(self) -> None:
         with self.assertRaises(ValueError):

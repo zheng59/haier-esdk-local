@@ -19,7 +19,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .client import DEFAULT_MAC, HaierClient, HaierError
 from .const import (CONF_DEVICE_ID, CONF_HOST, CONF_MAC, CONF_PORT, CONF_SCAN_INTERVAL,
                     DEFAULT_PORT, DEFAULT_SCAN_INTERVAL, DOMAIN)
-from .protocol import TYPE_ALARM, HaierStatus
+from .protocol import TYPE_ALARM, HaierStatus, alarm_bits
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,8 +30,9 @@ class HaierCoordinator(DataUpdateCoordinator[HaierStatus]):
     """一辆空调 = 一个协调器。"""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        host: str = entry.data[CONF_HOST]
-        port: int = entry.data.get(CONF_PORT, DEFAULT_PORT)
+        # 选项优先（用户可以在「配置 → 选项」里改 IP / 端口 / 轮询间隔）
+        host: str = entry.options.get(CONF_HOST, entry.data[CONF_HOST])
+        port: int = int(entry.options.get(CONF_PORT, entry.data.get(CONF_PORT, DEFAULT_PORT)))
         interval: int = entry.options.get(
             CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
         super().__init__(hass, _LOGGER,
@@ -73,10 +74,20 @@ class HaierCoordinator(DataUpdateCoordinator[HaierStatus]):
             return status
 
     def _remember_fault(self, client: HaierClient) -> None:
-        """连接时模块会主动推故障位图（type=0x04），白拿的，不用额外请求。"""
+        """连接时模块会主动推故障位图（type=0x04），白拿的，不用额外请求。
+
+        位图含义厂家没公开 → 只记「置位号」；有变化才写日志（故障出现/清除都留痕）。
+        """
         for env in client.burst:
-            if env.frame.frame_type == TYPE_ALARM and len(env.frame.data) >= 2:
-                self.last_fault = bytes(env.frame.data[2:])
+            if env.frame.frame_type != TYPE_ALARM or len(env.frame.data) < 2:
+                continue
+            fault = bytes(env.frame.data[2:])
+            if fault != self.last_fault:
+                if any(fault):
+                    _LOGGER.warning("空调报故障：位图 %s（置位 %s）", fault.hex(), alarm_bits(fault))
+                elif self.last_fault:
+                    _LOGGER.info("空调故障已清除（原位图 %s）", self.last_fault.hex())
+            self.last_fault = fault
 
     # ------------------------------------------------------------------ 供配置流程复用
     @staticmethod

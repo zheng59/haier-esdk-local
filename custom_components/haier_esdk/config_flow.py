@@ -15,12 +15,12 @@ from .coordinator import HaierCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
-def _schema(default_port: int = DEFAULT_PORT,
-            default_interval: int = DEFAULT_SCAN_INTERVAL) -> vol.Schema:
+def _schema(host: str = "", port: int = DEFAULT_PORT,
+            interval: int = DEFAULT_SCAN_INTERVAL) -> vol.Schema:
     return vol.Schema({
-        vol.Required(CONF_HOST): str,
-        vol.Optional(CONF_PORT, default=default_port): vol.All(int, vol.Range(min=1, max=65535)),
-        vol.Optional(CONF_SCAN_INTERVAL, default=default_interval):
+        vol.Required(CONF_HOST, default=host): str,
+        vol.Optional(CONF_PORT, default=port): vol.All(int, vol.Range(min=1, max=65535)),
+        vol.Optional(CONF_SCAN_INTERVAL, default=interval):
             vol.All(int, vol.Range(min=10, max=900)),
     })
 
@@ -69,20 +69,38 @@ class HaierEsdkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class HaierEsdkOptionsFlow(config_entries.OptionsFlow):
-    """只让改轮询间隔（模块同时只接受一个连接，别调太快）。"""
+    """改 IP / 端口 / 轮询间隔（模块同时只接受一个连接，别调太快）。
+
+    改 IP 或端口时会**现场连一次验证**，连不上就不让保存 —— 免得手滑把条目改废。
+    """
 
     _legacy_entry: config_entries.ConfigEntry | None = None
 
     async def async_step_init(self, user_input: dict | None = None):
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
         entry = getattr(self, "config_entry", None) or self._legacy_entry
-        current = entry.options.get(CONF_SCAN_INTERVAL,
-                                   entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+        current_host = entry.options.get(CONF_HOST, entry.data.get(CONF_HOST, ""))
+        current_port = int(entry.options.get(CONF_PORT, entry.data.get(CONF_PORT, DEFAULT_PORT)))
+        current_interval = entry.options.get(
+            CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            host = str(user_input[CONF_HOST]).strip()
+            port = int(user_input[CONF_PORT])
+            if (host, port) != (current_host, current_port):
+                try:
+                    await HaierCoordinator.async_probe(self.hass, host, port)
+                except (HaierError, OSError, TimeoutError) as exc:
+                    _LOGGER.debug("选项里改连接参数后探测失败：%s", exc)
+                    errors["base"] = "cannot_connect"
+            if not errors:
+                return self.async_create_entry(title="", data={
+                    CONF_HOST: host,
+                    CONF_PORT: port,
+                    CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
+                })
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema({
-                vol.Optional(CONF_SCAN_INTERVAL, default=int(current)):
-                    vol.All(int, vol.Range(min=10, max=900)),
-            }),
+            data_schema=_schema(current_host, current_port, int(current_interval)),
+            errors=errors,
         )

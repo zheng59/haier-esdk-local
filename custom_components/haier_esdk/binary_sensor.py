@@ -1,6 +1,8 @@
 """故障告警（把模块主动推来的故障位图暴露成二进制传感器）。
 
-位图含义海尔没公开，这里只做「有没有故障」的判断：等位图非全 0 即告警。
+位图含义海尔没公开，所以只做两件事：**有没有故障**（非全 0 即告警）+ 把**置位号**摊出来。
+置位号按「字节下标×8 + 位下标、字节内低位在前」编号（和 c17/c19 那些位开关一致），
+排障时拿它对照或报给厂商，别自己猜故障名。
 """
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER, MODULE_MODEL
 from .coordinator import HaierCoordinator
+from .protocol import alarm_bits
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry,
@@ -49,6 +52,8 @@ class HaierFaultSensor(CoordinatorEntity[HaierCoordinator], BinarySensorEntity):
         return any(fault)
 
     @property
-    def extra_state_attributes(self) -> dict[str, str] | None:
+    def extra_state_attributes(self) -> dict[str, object] | None:
         fault = self.coordinator.last_fault
-        return {"bitmap": fault.hex()} if fault else None
+        if not fault:
+            return None
+        return {"bitmap": fault.hex(), "set_bits": alarm_bits(fault)}

@@ -197,6 +197,17 @@ class ClientTestCase(unittest.TestCase):
         self.assertEqual(block[17] & 0x08, 0)
         self.assertEqual(block[15], 1)
 
+    def test_swing_write_clears_c19_gate(self) -> None:
+        """真机上 c19 bit0 被 App 置上后 c15 就失效了 → 写摆风时必须把 bit0 清掉。"""
+        self.client.close()
+        self.server.block = bytes(BLOCK[:19] + b"\x01" + BLOCK[20:])   # c19 bit0 = 1
+        self.client = HaierClient("192.0.2.10")
+        self.client.connect()
+        self.client.set_hvac(swing=True)
+        block = parse_epp(self.server.requests[0][80:]).data[2:26]
+        self.assertEqual(block[15], 1)
+        self.assertEqual(block[19] & 0x01, 0)
+
     def test_invalid_answer_raises(self) -> None:
         self.server.invalid = {CMD_POWER_OFF}
         with self.assertRaises(HaierCommandRejected):

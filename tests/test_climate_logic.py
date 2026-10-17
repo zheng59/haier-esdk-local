@@ -221,7 +221,8 @@ class FaultSensorTest(unittest.TestCase):
     def test_fault_reported_with_bitmap(self) -> None:
         sensor = self._sensor(b"\x00\x08\x00\x00\x00\x00")
         self.assertTrue(sensor.is_on)
-        self.assertEqual(sensor.extra_state_attributes, {"bitmap": "000800000000"})
+        self.assertEqual(sensor.extra_state_attributes,
+                         {"bitmap": "000800000000", "set_bits": [11]})
 
 
 if __name__ == "__main__":

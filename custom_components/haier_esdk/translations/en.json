@@ -22,10 +22,16 @@
     "step": {
       "init": {
         "title": "Options",
+        "description": "Changing the IP or port is verified with a live connection first; an unreachable address will not be saved. Keep the poll interval at 10 seconds or more (the module accepts only one TCP connection at a time).",
         "data": {
+          "host": "IP address",
+          "port": "Port",
           "scan_interval": "Poll interval (seconds)"
         }
       }
+    },
+    "error": {
+      "cannot_connect": "Cannot reach the air conditioner: check the IP, make sure it is on the same network as Home Assistant, and that no other client is holding the connection"
     }
   },
   "entity": {

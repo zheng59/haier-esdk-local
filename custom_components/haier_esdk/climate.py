@@ -21,6 +21,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER, MODULE_MODEL
 from .coordinator import HaierCoordinator
+from .protocol import alarm_bits
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -127,11 +128,13 @@ class HaierClimate(CoordinatorEntity[HaierCoordinator], ClimateEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         status = self._status
+        fault = self.coordinator.last_fault
         return {
             "health_mode": status.health,
             "control_block": status.raw.hex(),
             "device_id": self.coordinator.device_id,
-            "last_fault": self.coordinator.last_fault.hex() if self.coordinator.last_fault else None,
+            "fault_bitmap": fault.hex() if fault else None,
+            "fault_bits": alarm_bits(fault) if fault else None,
         }
 
     # ------------------------------------------------------------------ 控制

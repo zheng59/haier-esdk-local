@@ -22,10 +22,16 @@
     "step": {
       "init": {
         "title": "选项",
+        "description": "改了 IP / 端口会现场连一次验证，连不上不会保存。轮询间隔别低于 10 秒（模块同时只接受一个连接）。",
         "data": {
+          "host": "IP 地址",
+          "port": "端口",
           "scan_interval": "轮询间隔（秒）"
         }
       }
+    },
+    "error": {
+      "cannot_connect": "连不上这台空调：确认 IP 正确、和 Home Assistant 在同一网段，且没有别的客户端正占用它"
     }
   },
   "entity": {

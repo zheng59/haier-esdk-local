@@ -197,7 +197,7 @@ class HaierClient:
         if health is not None:
             target = target.with_health(health)
         if swing is not None:
-            target = target.with_byte(15, 1 if swing else 0)
+            target = target.with_swing(swing)
         if target.raw == current.raw:
             return current
         return self.apply(target)
