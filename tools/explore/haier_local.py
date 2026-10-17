@@ -18,10 +18,14 @@
     python3 haier_local.py 192.168.1.100 --no-request # 只看推送
 """
 import argparse
+import pathlib
 import socket
 import struct
 import sys
 import time
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from local_config import HOST as _DEFAULT_HOST  # noqa: E402  真实值见 local_settings.py
 
 PORT = 56800
 TYPE_CONTROL = 0x01
@@ -120,7 +124,7 @@ def describe_smartair2(data: bytes) -> list[str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("host")
+    ap.add_argument("host", nargs="?", default=_DEFAULT_HOST)
     ap.add_argument("--no-request", action="store_true", help="只收推送，不发读请求")
     ap.add_argument("--addr", default="000000000001", help="6 字节地址（默认 000000000001）")
     ap.add_argument("--wait", type=float, default=3.0)

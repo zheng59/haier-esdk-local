@@ -28,10 +28,11 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from haier_energy_probe import VOLATILE_IDX, Probe, ask_safe      # noqa: E402
 from haier_protocol import ADDR_AC, HaierStatus, epp_frame        # noqa: E402
+from local_config import MAC as _DEFAULT_MAC                      # noqa: E402  真实值见 local_settings.py
 
 # 嫌疑名单：全扫时"回了 STATUS 却不是 4d01"的字
 SUSPECTS = [0x4D04, 0x4D08, 0x4D09, 0x4D18, 0x4D19,
@@ -140,7 +141,7 @@ def main() -> int:
     payload = bytes.fromhex(args.payload) if args.payload else b""
 
     findings: dict[int, str] = {}
-    with Probe(args.host, args.port) as probe:
+    with Probe(args.host, args.port, mac=_DEFAULT_MAC) as probe:
         print(f"已连接 {args.host}:{args.port}  设备 {probe.device_id or '?'}")
         start = read_block(probe, args.wait)
         if start is None:

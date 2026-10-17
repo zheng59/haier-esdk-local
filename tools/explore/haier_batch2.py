@@ -3,18 +3,22 @@
 
 用法：python3 haier_batch2.py 192.168.1.100
 """
+import pathlib
 import socket
 import sys
 import time
 
-HOST = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.100"
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from local_config import HOST as _DEFAULT_HOST, MAC as _DEFAULT_MAC  # noqa: E402  真实值见 local_settings.py
+
+HOST = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_HOST
 NAMES = {0x01: "CONTROL", 0x02: "STATUS", 0x03: "INVALID", 0x04: "ALARM",
          0x05: "CONFIRM", 0x06: "REPORT", 0x61: "GET_VERSION", 0x62: "VERSION_RESP",
          0x67: "GET_ADDRESSES", 0x68: "ADDR_RESP", 0x73: "GET_ALARM", 0x74: "ALARM_RESP"}
 
 
 def hdr() -> bytes:
-    return b"\x00\x00\x27\x15" + b"\x00" * 36 + b"001122334455" + b"\x00" * 27
+    return b"\x00\x00\x27\x15" + b"\x00" * 36 + _DEFAULT_MAC.encode("ascii") + b"\x00" * 27
 
 
 def epp(data: bytes, ftype: int, addr: bytes) -> bytes:

@@ -3,13 +3,17 @@
 
 用法：python3 haier_interplay.py 192.168.1.100
 """
+import pathlib
 import socket
 import sys
 import time
 
-HOST = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.100"
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from local_config import HOST as _DEFAULT_HOST, MAC as _DEFAULT_MAC  # noqa: E402  真实值见 local_settings.py
+
+HOST = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_HOST
 PORT = 56800
-DEV = b"001122334455"
+DEV = _DEFAULT_MAC.encode("ascii")
 
 FRAME_NAMES = {0x01: "CONTROL", 0x02: "STATUS", 0x03: "INVALID", 0x04: "ALARM",
                0x05: "CONFIRM", 0x06: "REPORT", 0x61: "GET_VERSION"}

@@ -3,3 +3,12 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# 本地私有配置（真实 IP / MAC，别提交）
+local_settings.py
+
+# 逆向调试时产生的日志与抓包
+*.log
+Haier.log
+Haier.json
+Haier.dat

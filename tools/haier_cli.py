@@ -21,12 +21,15 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import component_loader  # noqa: F401,E402  导入即把集成里的 protocol/client 装进 sys.modules
+import local_config  # noqa: E402  本地私有配置：真实 IP/MAC 放 local_settings.py（不入库）
 from haier_esdk.client import HaierClient, HaierError, format_status  # noqa: E402
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="海尔空调本地直连 CLI")
-    parser.add_argument("host", help="空调 IP，例如 192.168.1.100")
+    parser.add_argument("host", nargs="?",
+                        default=local_config.HOST,
+                        help="空调 IP（省略则取 local_settings.py / local_config.py 里的值）")
     parser.add_argument("command",
                         choices=["read", "on", "off", "temp", "mode", "fan", "swing", "health",
                                  "fault"],
@@ -35,7 +38,7 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        with HaierClient(args.host) as client:
+        with HaierClient(args.host, port=local_config.PORT, mac=local_config.MAC) as client:
             if args.command == "read":
                 print(format_status(client.read_status()))
             elif args.command == "fault":

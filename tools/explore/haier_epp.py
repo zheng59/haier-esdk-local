@@ -8,10 +8,14 @@
 
 用法：python3 haier_epp.py 192.168.1.100
 """
+import pathlib
 import socket
 import struct
 import sys
 import time
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from local_config import HOST as _DEFAULT_HOST  # noqa: E402  真实值见 local_settings.py
 
 
 def capture(host: str, port: int = 56800, wait: float = 2.5) -> bytes:
@@ -60,7 +64,7 @@ def parse_epp(seg: bytes) -> dict | None:
 
 
 def main() -> int:
-    host = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.100"
+    host = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_HOST
     buf = capture(host)
     print(f"收到 {len(buf)} 字节\n")
 

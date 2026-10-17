@@ -6,6 +6,13 @@ HA ↔ 空调 IP:56800，明文私有协议（EPP），没有任何账号 / 密�
 > 实测设备：海尔 **KFR-35G/BAA21AU1**（挂的是 KZW 一代 eSDK Wi-Fi 模块，固件 `e_1.2.02`）
 > 集成域名 `haier_esdk`，模块型号族「eSDK 一代 / 56800 明文 EPP」。
 
+> [!IMPORTANT]
+> **免责声明**：这是一个**独立的社区项目，与海尔（Haier）没有任何关联，未获其授权或背书**。
+> "Haier / 海尔" 及其它商标归各自权利人所有，此处仅用于说明本软件所互操作的硬件。
+> 本项目只与你**自己拥有**、**在你自己局域网内**的设备通信，全程明文，不涉及账号、密钥，
+> 也不调用任何云端接口，更没有绕过任何技术保护措施。软件按「原样」提供，
+> 不对设备损坏、数据丢失或任何后果负责 —— **使用风险自负**。
+
 ---
 
 ## 1. 为什么这台不用捣鼓 localKey
@@ -221,6 +228,18 @@ python3 tools/explore/haier_energy_probe.py 192.168.1.100 --sweep    # 全扫 4d
 python3 tools/explore/haier_field_probe.py 192.168.1.100             # 逐个试「字段级命令」管哪一位（动完立刻还原）
 ```
 
+### 本地配置（IP / 端口 / MAC）
+
+上面的 IP 只是占位符。工具和探索脚本的真实取值来自仓库根目录的 **`local_settings.py`**
+—— 它已被 `.gitignore` 忽略，**不会提交**：
+
+```bash
+cp local_settings.example.py local_settings.py    # 然后填上你的 IP / 端口 / MAC
+```
+
+取值优先级：`local_settings.py` → 环境变量 `HAIER_HOST` / `HAIER_PORT` / `HAIER_MAC`
+→ `local_config.py` 里的占位符；**命令行参数始终最优先**（所以 `haier_cli.py <IP> read` 照旧可用）。
+
 ## 7. 代码结构
 
 ```
@@ -238,6 +257,8 @@ custom_components/haier_esdk/     ← 集成本体（对外分发就这一份）
 component_loader.py              让测试和工具直接加载集成里的 protocol/client（造空壳包，
                                  绕过依赖 homeassistant 的 __init__.py）—— 保证**只有一份实现**
 haier_protocol.py / haier_client.py   根目录兼容层（转发到上面那份，给老脚本用）
+local_config.py                  本地配置加载器（真实 IP/MAC 放 local_settings.py，不入库）
+local_settings.example.py        本地配置模板（复制成 local_settings.py 再填）
 tools/                           命令行工具 + 能力探测
 tools/explore/                   逆向/排查期的一次性脚本（存档备查：能量探测、字段级命令探测…）
 tests/                           57 个单元测试
@@ -274,13 +295,27 @@ python3 -m unittest discover -s tests -v
 
 ## 10. 出处 / 参考
 
-本项目是对着这几份公开实现把方言对出来的：
+**本项目是独立实现**：代码、测试与探测脚本都是自己写的，只在「协议事实」层面参考了下列
+公开资料（帧布局、命令字、位定义这类事实性信息不受著作权保护）。若某份资料未声明开源许可，
+请注意我们**只参考了它记录的协议行为，没有复制其代码**。
 
 - [esphome/esphome · `components/haier/smartair2_climate.cpp`](https://github.com/esphome/esphome/blob/dev/esphome/components/haier/smartair2_climate.cpp)
-  —— 控制消息 `4D5F` + 24 字节块、`4D02/4D03`、能力位（**本机方言就是它的 smartair2 命令集**）
-- [KoalaBear84/HaierAC · `Program.cs`](https://github.com/KoalaBear84/HaierAC/blob/master/Program.cs)
-  —— 请求信封（魔数 `2714`、序号、帧长）的权威来源
-- [paveldn/HaierProtocol](https://github.com/paveldn/HaierProtocol) —— FrameType 枚举
+  —— 控制消息 `4D5F` + 24 字节块、`4D02/4D03`、能力位（**本机方言就是它的 smartair2 命令集**）。
+  该文件是 C++，属 **GPLv3**；本项目未使用其任何代码。
+- [KoalaBear84/HaierAC](https://github.com/KoalaBear84/HaierAC) —— 请求信封（魔数 `2714`、序号、
+  帧长）的早期记录（该仓库**未声明许可**，仅参考其记录的协议行为）。
+- [paveldn/HaierProtocol](https://github.com/paveldn/HaierProtocol)（MIT）与
+  [paveldn/haier-esphome](https://github.com/paveldn/haier-esphome)（未声明许可）—— FrameType / e++ 帧层。
+- [ddnlv/haier-kzw-w002-local](https://github.com/ddnlv/haier-kzw-w002-local)（MIT）—— 同为
+  KZW 模块 + SmartAir2 的 Home Assistant 本地集成。
+- [enapt/haismart-local](https://github.com/enapt/haismart-local)（MIT）—— uSS / 56800 的另一条路线
+  （要 localKey）；`tools/explore/haier_probe.py` 的 uSS 握手格式参考其 `PROTOCOL.md`。
+- [bstuff/haier-ac-remote](https://github.com/bstuff/haier-ac-remote) /
+  [roeij/py-haier-ac-remote](https://github.com/roeij/py-haier-ac-remote) /
+  [oxystin/homebridge-haier-air-conditioner](https://github.com/oxystin/homebridge-haier-air-conditioner)
+  —— 更早的 56800 / SmartAir2 逆向工作。
+- [Andre0512/hon](https://github.com/Andre0512/hon)（hOn 平台）、
+  [banto6/haier](https://github.com/banto6/haier)（中国区云端）—— 其它海尔路线，本项目未采用。
 
 ## 11. 已知取舍
 
@@ -307,3 +342,12 @@ python3 -m unittest discover -s tests -v
   要试先记基线块、动一项立刻核对并还原；`tools/explore/haier_field_probe.py` 就是干这个的。
   想靠它们补回显示屏 / 极速 / 静音：**没有对应的字**，此路不通（已实测）。
 - 不碰云端：整条链路只有 LAN 内的明文 TCP。
+
+## 12. 许可与免责
+
+本项目以 **MIT 许可证**发布，全文见 [`LICENSE`](LICENSE)。
+
+- 与海尔（Haier）**无任何关联**，未获其授权或背书；"Haier / 海尔" 等商标仅用于说明互操作对象。
+- 只在你自己的局域网内跟你自己的设备通信；不涉及账号、密钥或云端接口，也不规避任何技术保护措施。
+- 文档里公开了部分**会真实改动设备设置**的命令字（见 §9、§11）—— 照着做可能改坏设备，
+  **风险自负**。软件按「原样」提供，不含任何担保。

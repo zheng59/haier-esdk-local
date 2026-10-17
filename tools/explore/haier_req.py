@@ -14,9 +14,13 @@
   python3 haier_req.py 192.168.1.100 --frame <完整 EPP 帧 hex>
 """
 import argparse
+import pathlib
 import socket
 import sys
 import time
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from local_config import HOST as _DEFAULT_HOST, MAC as _DEFAULT_MAC  # noqa: E402  真实值见 local_settings.py
 
 NAMES = {0x01: "CONTROL", 0x02: "STATUS", 0x03: "INVALID", 0x04: "ALARM", 0x05: "CONFIRM",
          0x06: "REPORT", 0x61: "GET_VERSION", 0x62: "VERSION_RESP", 0x73: "GET_ALARM",
@@ -31,7 +35,7 @@ CMD = {
 }
 
 
-def build(frame: bytes, mac: bytes = b"001122334455", seq: int = 1) -> bytes:
+def build(frame: bytes, mac: bytes = _DEFAULT_MAC.encode("ascii"), seq: int = 1) -> bytes:
     head = (b"\x00\x00\x27\x14" + b"\x00" * 36 + mac.ljust(12, b"\x00")[:12]
             + b"\x00" * 4 + b"\x00" * 16
             + seq.to_bytes(4, "big") + len(frame).to_bytes(4, "big"))
@@ -74,7 +78,7 @@ def decode(buf: bytes, indent: str = "    ") -> bool:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("host")
+    ap.add_argument("host", nargs="?", default=_DEFAULT_HOST)
     ap.add_argument("cmd", nargs="?", choices=list(CMD), help="预设命令")
     ap.add_argument("--frame", help="完整 EPP 帧 hex")
     ap.add_argument("--seq", type=int, default=1)

@@ -8,10 +8,14 @@
   python3 haier_raw.py 192.168.1.100 56800 --hex 4861696572 # 发自定义字节
 """
 import argparse
+import pathlib
 import socket
 import struct
 import sys
 import time
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from local_config import HOST as _DEFAULT_HOST, MAC as _DEFAULT_MAC  # noqa: E402  真实值见 local_settings.py
 
 MAGIC = b"Haier"
 CMD_SEARCH = 0x6915
@@ -25,7 +29,7 @@ def udiscovery_request() -> bytes:
             + b"\x00" * 6 + struct.pack(">I", len(payload)) + bytes(payload))
 
 
-def uss_hello(device_id: str = "001122334455", pro_ver: int = 2) -> bytes:
+def uss_hello(device_id: str = _DEFAULT_MAC, pro_ver: int = 2) -> bytes:
     type_byte = {2: 0x01, 3: 0x6E}[pro_ver]
     dev = device_id.encode("ascii").ljust(32, b"\x00")[:32]
     return struct.pack(">IHBBIHH", 0xEA60, len(dev) + 0x0A, type_byte, 0, 1, 0, 0) + dev
@@ -62,7 +66,7 @@ def ascii_fields(data: bytes, minlen: int = 4) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("host")
+    ap.add_argument("host", nargs="?", default=_DEFAULT_HOST)
     ap.add_argument("port", type=int)
     ap.add_argument("--listen", action="store_true", help="连上后只听不回")
     ap.add_argument("--uss-hello", action="store_true", help="发标准 uSS HELLO")

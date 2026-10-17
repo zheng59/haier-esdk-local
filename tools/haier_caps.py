@@ -11,10 +11,11 @@ import time
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
 
+import local_config                                  # noqa: E402  真实 IP/MAC 放 local_settings.py
 from haier_client import HaierClient, _fmt          # noqa: E402  根目录兼容层
 from haier_protocol import HaierStatus              # noqa: E402
 
-HOST = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.100"
+HOST = sys.argv[1] if len(sys.argv) > 1 else local_config.HOST
 
 # 室温 / 湿度 / 主板交换计数：自己就会变，比对「有没有还原」时要排除
 VOLATILE = {1, 3, 5}
@@ -42,7 +43,7 @@ def probe(cli: HaierClient, name: str, mutate, check) -> None:
 
 
 def main() -> int:
-    with HaierClient(HOST) as cli:
+    with HaierClient(HOST, mac=local_config.MAC) as cli:
         base = cli.read_status()
         print(f"基线：{_fmt(base)}\n  原始块：{base.raw.hex()}\n")
         print("逐项探测（每项改完立刻还原）：")

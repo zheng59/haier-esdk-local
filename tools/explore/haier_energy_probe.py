@@ -40,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from haier_client import HaierClient, HaierError                          # noqa: E402
 from haier_protocol import (ADDR_AC, ADDR_MODULE, FRAME_NAMES,            # noqa: E402
                             HaierStatus, build_request, epp_frame)
+from local_config import MAC as _DEFAULT_MAC                              # noqa: E402  真实值见 local_settings.py
 
 # 协议层没定义的帧名，只为看懂日志（不影响实现）
 EXTRA_NAMES = {0x70: "GET_DEV_ID", 0x71: "DEV_ID_RESP", 0x7C: "GET_CONFIG",
@@ -154,7 +155,7 @@ def watch(host: str, port: int, seconds: float, interval: float) -> int:
     seen: dict[int, set[int]] = {}
     samples = 0
     t0 = time.monotonic()
-    with Probe(host, port) as probe:
+    with Probe(host, port, mac=_DEFAULT_MAC) as probe:
         print(f"已连接 {host}:{port}  设备 {probe.device_id or '?'}")
         while time.monotonic() - t0 < seconds:
             stamp = time.monotonic() - t0
@@ -217,7 +218,7 @@ def main() -> int:
         return watch(args.host, args.port, args.watch, args.interval)
 
     counts: dict[str, int] = {}
-    with Probe(args.host, args.port) as probe:
+    with Probe(args.host, args.port, mac=_DEFAULT_MAC) as probe:
         print(f"已连接 {args.host}:{args.port}  设备 {probe.device_id or '?'}")
         if probe.burst:
             print("连接时模块主动推的帧：")

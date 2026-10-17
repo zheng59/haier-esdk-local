@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """把 56800 推送的外层封包包头逐字节对齐分析（只读）。"""
+import pathlib
 import socket
 import sys
 import time
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from local_config import HOST as _DEFAULT_HOST, MAC as _DEFAULT_MAC  # noqa: E402  真实值见 local_settings.py
 
 
 def capture(host: str, port: int = 56800, wait: float = 2.0) -> bytes:
@@ -23,7 +27,7 @@ def capture(host: str, port: int = 56800, wait: float = 2.0) -> bytes:
         s.close()
 
 
-host = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.100"
+host = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_HOST
 buf = capture(host)
 print(f"总长 {len(buf)} 字节\n")
 
@@ -48,7 +52,7 @@ for idx, (a, b) in enumerate(msgs):
     m = buf[a:b]
     print(f"\n=== 消息 {idx}: 长 {len(m)} 字节 (0x{a:x}..0x{b:x}) ===")
     # 找设备 ID (ASCII 12 hex)
-    devpos = m.find(b"001122334455")
+    devpos = m.find(_DEFAULT_MAC.encode("ascii"))
     print(f"  设备ID ASCII 出现在偏移 {hex(devpos) if devpos >= 0 else '未找到'}")
     if devpos >= 0:
         # 设备 ID 字段按 32 字节算：找它后面第一个非零

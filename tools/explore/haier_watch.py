@@ -7,9 +7,13 @@
   python3 haier_watch.py 192.168.1.100 --send-hex ffff0a000000000001014d015a
 """
 import argparse
+import pathlib
 import socket
 import sys
 import time
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from local_config import HOST as _DEFAULT_HOST  # noqa: E402  真实值见 local_settings.py
 
 FRAME_NAMES = {0x01: "CONTROL", 0x02: "STATUS", 0x03: "INVALID", 0x04: "ALARM",
                0x05: "CONFIRM", 0x06: "REPORT", 0x61: "GET_VERSION",
@@ -47,7 +51,7 @@ def decode_msg(msg: bytes) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("host")
+    ap.add_argument("host", nargs="?", default=_DEFAULT_HOST)
     ap.add_argument("--secs", type=float, default=30.0)
     ap.add_argument("--send", help="突发后要发的命令字（如 61、4d01）")
     ap.add_argument("--send-hex", help="突发后要发的完整 hex")

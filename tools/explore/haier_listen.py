@@ -3,11 +3,15 @@
 
 用法：python3 haier_listen.py 192.168.1.100 [秒数]
 """
+import pathlib
 import socket
 import sys
 import time
 
-HOST = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.100"
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from local_config import HOST as _DEFAULT_HOST  # noqa: E402  真实值见 local_settings.py
+
+HOST = sys.argv[1] if len(sys.argv) > 1 else _DEFAULT_HOST
 SECS = float(sys.argv[2]) if len(sys.argv) > 2 else 25.0
 
 
