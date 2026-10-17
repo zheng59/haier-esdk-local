@@ -77,13 +77,18 @@ def decode(buf: bytes, indent: str = "    ") -> bool:
 
 
 def main() -> int:
+    argv = sys.argv[1:]
+    # 允许省略 IP：`haier_req.py hello` 等于 `haier_req.py <local_settings 里的 IP> hello`
+    if argv and argv[0] in CMD:
+        argv = [_DEFAULT_HOST, *argv]
+
     ap = argparse.ArgumentParser()
     ap.add_argument("host", nargs="?", default=_DEFAULT_HOST)
     ap.add_argument("cmd", nargs="?", choices=list(CMD), help="预设命令")
     ap.add_argument("--frame", help="完整 EPP 帧 hex")
     ap.add_argument("--seq", type=int, default=1)
     ap.add_argument("--secs", type=float, default=8.0)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     frame = bytes.fromhex(args.frame) if args.frame else bytes.fromhex(CMD[args.cmd])
     req = build(frame, seq=args.seq)
