@@ -7,7 +7,8 @@
         "data": {
           "host": "IP address",
           "port": "Port",
-          "scan_interval": "Poll interval (seconds)"
+          "scan_interval": "Poll interval (seconds)",
+          "rediscover": "Auto-rediscover IP (scan local subnet by module MAC)"
         }
       }
     },
@@ -22,11 +23,12 @@
     "step": {
       "init": {
         "title": "Options",
-        "description": "Changing the IP or port is verified with a live connection first; an unreachable address will not be saved. Keep the poll interval at 10 seconds or more (the module accepts only one TCP connection at a time).",
+        "description": "Changing the IP or port is verified with a live connection first; an unreachable address will not be saved. Keep the poll interval at 10 seconds or more (the module accepts only one TCP connection at a time). With auto-rediscover enabled, a new DHCP address is found again by scanning the local subnet for the module MAC.",
         "data": {
           "host": "IP address",
           "port": "Port",
-          "scan_interval": "Poll interval (seconds)"
+          "scan_interval": "Poll interval (seconds)",
+          "rediscover": "Auto-rediscover IP (scan local subnet by module MAC)"
         }
       }
     },

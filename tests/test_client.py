@@ -230,6 +230,15 @@ class ClientTestCase(unittest.TestCase):
         with self.assertRaises(HaierError):
             self.client.read_status()
 
+    def test_connect_failure_closes_socket(self) -> None:
+        """连到一半失败（比如端口被人占了又立刻断）不能漏 socket —— 扫网段时会连几百台。"""
+        broken = FakeSocket(self.server)
+        broken.recv = lambda n: (_ for _ in ()).throw(OSError("boom"))
+        with mock.patch("socket.create_connection", return_value=broken):
+            with self.assertRaises(HaierError):
+                HaierClient("192.0.2.11").connect()
+        self.assertTrue(broken.closed)
+
     def test_request_magic_is_used(self) -> None:
         req = build_request(epp_frame(b"\x4d\x01", addr=ADDR_AC), seq=3)
         self.assertEqual(req[:4], MAGIC_REQUEST)

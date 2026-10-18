@@ -7,7 +7,8 @@
         "data": {
           "host": "IP 地址",
           "port": "端口",
-          "scan_interval": "轮询间隔（秒）"
+          "scan_interval": "轮询间隔（秒）",
+          "rediscover": "IP 变了自动找回（扫本地网段，认模块 MAC）"
         }
       }
     },
@@ -22,11 +23,12 @@
     "step": {
       "init": {
         "title": "选项",
-        "description": "改了 IP / 端口会现场连一次验证，连不上不会保存。轮询间隔别低于 10 秒（模块同时只接受一个连接）。",
+        "description": "改了 IP / 端口会现场连一次验证，连不上不会保存。轮询间隔别低于 10 秒（模块同时只接受一个连接）。自动找回打开后，空调 DHCP 换 IP 时会扫本地网段（认模块 MAC）把新 IP 找回来。",
         "data": {
           "host": "IP 地址",
           "port": "端口",
-          "scan_interval": "轮询间隔（秒）"
+          "scan_interval": "轮询间隔（秒）",
+          "rediscover": "IP 变了自动找回（扫本地网段，认模块 MAC）"
         }
       }
     },

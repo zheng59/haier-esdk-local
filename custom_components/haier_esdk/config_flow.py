@@ -8,20 +8,23 @@ from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
 
 from .client import HaierError
-from .const import (CONF_DEVICE_ID, CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL,
-                    DEFAULT_PORT, DEFAULT_SCAN_INTERVAL, DOMAIN)
+from .const import (CONF_DEVICE_ID, CONF_HOST, CONF_PORT, CONF_REDISCOVER,
+                    CONF_SCAN_INTERVAL, DEFAULT_PORT, DEFAULT_REDISCOVER,
+                    DEFAULT_SCAN_INTERVAL, DOMAIN)
 from .coordinator import HaierCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 
 def _schema(host: str = "", port: int = DEFAULT_PORT,
-            interval: int = DEFAULT_SCAN_INTERVAL) -> vol.Schema:
+            interval: int = DEFAULT_SCAN_INTERVAL,
+            rediscover: bool = DEFAULT_REDISCOVER) -> vol.Schema:
     return vol.Schema({
         vol.Required(CONF_HOST, default=host): str,
         vol.Optional(CONF_PORT, default=port): vol.All(int, vol.Range(min=1, max=65535)),
         vol.Optional(CONF_SCAN_INTERVAL, default=interval):
             vol.All(int, vol.Range(min=10, max=900)),
+        vol.Optional(CONF_REDISCOVER, default=rediscover): bool,
     })
 
 
@@ -54,6 +57,8 @@ class HaierEsdkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data={CONF_HOST: host,
                           CONF_PORT: port,
                           CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
+                          CONF_REDISCOVER: bool(user_input.get(CONF_REDISCOVER,
+                                                               DEFAULT_REDISCOVER)),
                           CONF_DEVICE_ID: device_id},
                 )
         return self.async_show_form(step_id="user", data_schema=_schema(), errors=errors)
@@ -82,6 +87,8 @@ class HaierEsdkOptionsFlow(config_entries.OptionsFlow):
         current_port = int(entry.options.get(CONF_PORT, entry.data.get(CONF_PORT, DEFAULT_PORT)))
         current_interval = entry.options.get(
             CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+        current_rediscover = bool(entry.options.get(
+            CONF_REDISCOVER, entry.data.get(CONF_REDISCOVER, DEFAULT_REDISCOVER)))
 
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -98,9 +105,12 @@ class HaierEsdkOptionsFlow(config_entries.OptionsFlow):
                     CONF_HOST: host,
                     CONF_PORT: port,
                     CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
+                    CONF_REDISCOVER: bool(user_input.get(CONF_REDISCOVER,
+                                                         current_rediscover)),
                 })
         return self.async_show_form(
             step_id="init",
-            data_schema=_schema(current_host, current_port, int(current_interval)),
+            data_schema=_schema(current_host, current_port, int(current_interval),
+                                current_rediscover),
             errors=errors,
         )

@@ -29,6 +29,7 @@ async def async_get_config_entry_diagnostics(
             "host": coordinator.host,
             "port": coordinator.port,
             "device_id": coordinator.device_id,
+            "rediscover": getattr(coordinator, "rediscover", None),
         },
         "status": status.as_dict() if status else None,
         "fault": {

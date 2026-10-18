@@ -35,5 +35,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """改配置（如轮询间隔）后重载。"""
+    """改配置（如轮询间隔）后重载。
+
+    例外：自动重发现只改了 IP，协调器已经切到新 IP 了 —— 这时重载纯属浪费，
+    还会打断正在跑的轮询，所以直接跳过。
+    """
+    coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if coordinator is not None and coordinator.matches_entry(entry):
+        return
     await hass.config_entries.async_reload(entry.entry_id)

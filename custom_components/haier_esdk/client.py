@@ -63,19 +63,23 @@ class HaierClient:
         self.close()
 
     def connect(self) -> "HaierClient":
-        self._sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
-        self._sock.settimeout(0.3)
-        self._buf, self._seq, self.burst = b"", 0, []
-        # 连上后模块会主动推 2 条（故障位图 + 状态）；状态那条可以顺手当第一次读数。
-        deadline = time.monotonic() + self.burst_wait
-        while time.monotonic() < deadline:
-            got = self._drain(deadline)
-            self.burst.extend(got)
-            if any(self._is_status(e) for e in got) or self.burst:
-                break
-        for env in self.burst:
-            if self.device_id is None and len(env.raw_envelope) >= 52:
-                self.device_id = env.raw_envelope[40:52].decode("ascii", "replace").strip("\x00")
+        try:
+            self._sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+            self._sock.settimeout(0.3)
+            self._buf, self._seq, self.burst = b"", 0, []
+            # 连上后模块会主动推 2 条（故障位图 + 状态）；状态那条可以顺手当第一次读数。
+            deadline = time.monotonic() + self.burst_wait
+            while time.monotonic() < deadline:
+                got = self._drain(deadline)
+                self.burst.extend(got)
+                if any(self._is_status(e) for e in got) or self.burst:
+                    break
+            for env in self.burst:
+                if self.device_id is None and len(env.raw_envelope) >= 52:
+                    self.device_id = env.raw_envelope[40:52].decode("ascii", "replace").strip("\x00")
+        except BaseException:
+            self.close()                     # 连到一半失败也别漏 socket（扫网段时会连很多台）
+            raise
         return self
 
     def close(self) -> None:

@@ -102,7 +102,7 @@ docker logs -f homeassistant 2>&1 | grep -i -E 'haier|custom_components'
 ```
 /config/custom_components/haier_esdk/
 ├── __init__.py  climate.py  switch.py  binary_sensor.py
-├── protocol.py  client.py  coordinator.py  config_flow.py  diagnostics.py  const.py
+├── protocol.py  client.py  discovery.py  coordinator.py  config_flow.py  diagnostics.py  const.py
 ├── manifest.json  strings.json
 └── translations/zh-Hans.json  translations/en.json
 ```
@@ -120,6 +120,25 @@ docker logs -f homeassistant 2>&1 | grep -i -E 'haier|custom_components'
 
 > **IP 建议固定**：在路由器里给空调的 MAC 做静态 DHCP 绑定，否则换 IP 后要在
 > 集成里改（集成 → 配置 → 选项 → 改 IP，会现场验活）。
+
+### IP 变了怎么办（自动找回）
+
+路由器那边懒得动也没关系：集成默认开着「**IP 变了自动找回**」。空调 DHCP 换 IP 后，
+轮询一失败它就会扫一遍本地网段（认模块 MAC，也就是设备 ID），认到了自动把配置里的
+IP 改掉，下一轮轮询就通了 —— 手工不用做任何事。
+
+| 项目 | 说明 |
+| --- | --- |
+| 触发时机 | 只在**轮询/写命令失败**（连不上、断了、超时）时扫；命令被 `INVALID` 拒掉不算 |
+| 扫描范围 | HA 所在网段（`/22` 以内；网段太大就退回本机 `/24`），只做 TCP 连接 + 读设备 ID |
+| 冷却 | 两次扫描至少隔 5 分钟（空调关机时不会一直扫网） |
+| 认人依据 | 模块 MAC（= 设备 ID）；多台海尔设备时只有 MAC 对上才敢改，对不上宁可不改 |
+| 日志 | 成功：`空调 IP 变了：x.x.x.x → y.y.y.y，已自动更新…` |
+| 关掉它 | 集成 → 配置 → 选项 → 取消「IP 变了自动找回」（关了就只能手工改 IP） |
+
+> 前提是**空调和 HA 在同一个子网**（跨网段 / VLAN 扫不到，那还是老老实实做静态绑定）。
+> 另外它只是「换 IP 了」的兜底：空调**真的关机**时照样找不到，日志里会写
+> 「没找到这台空调…N 秒后再试」。
 
 > 要求 HA ≥ 2024.11（实测环境 2026 版一路可用）。
 
@@ -263,12 +282,13 @@ cp local_settings.example.py local_settings.py    # 然后填上你的 IP / 端�
 custom_components/haier_esdk/     ← 集成本体（对外分发就这一份）
 ├── protocol.py                   信封 / EPP / 24 字节控制块的编解码（纯函数，好测）
 ├── client.py                     同步 TCP 客户端（读 / 写 / set_hvac；HA 在执行器里跑它）
-├── coordinator.py                轮询协调器：串行化 + 连接时顺手收故障位图
+├── discovery.py                  IP 变了扫本地网段找回同一台（认模块 MAC，只读）
+├── coordinator.py                轮询协调器：串行化 + 连接时顺手收故障位图 + 自动找回 IP
 ├── climate.py                    空调实体
 ├── switch.py                     健康模式 / 遥控锁
 ├── binary_sensor.py              故障告警（带位图与置位号）
 ├── diagnostics.py                诊断导出（连接参数 / 状态块 / 故障位图）
-├── config_flow.py                填 IP → 现场验活 → 建设备；选项里可改 IP / 端口 / 轮询间隔
+├── config_flow.py                填 IP → 现场验活 → 建设备；选项里可改 IP / 端口 / 轮询间隔 / 自动找回
 ├── brand/                        品牌图标（icon.png 256 / icon@2x.png 512）
 └── manifest.json / strings.json / translations/
 
@@ -279,7 +299,7 @@ local_config.py                  本地配置加载器（真实 IP/MAC 放 local
 local_settings.example.py        本地配置模板（复制成 local_settings.py 再填）
 tools/                           命令行工具 + 能力探测
 tools/explore/                   逆向/排查期的一次性脚本（存档备查：能量探测、字段级命令探测…）
-tests/                           57 个单元测试
+tests/                           84 个单元测试
 ```
 
 ## 8. 跑测试
@@ -288,13 +308,15 @@ tests/                           57 个单元测试
 python3 -m unittest discover -s tests -v
 ```
 
-57 个用例，全部离线（不碰真机）：
+84 个用例，全部离线（不碰真机）：
 
 - **协议层 / 客户端**：校验和、信封布局、请求魔数、真机抓包的 216 字节突发解析、
   半条消息的拼接、控制块解码与改写、摆风写入顺带清 `c19` bit0、故障位图摊位号、
   `set_hvac` 的收发序列、`INVALID` 处理、对端关闭…（用假 socket 回放真机字节，不是 mock 掉业务逻辑）
 - **实体层**：模式/风速双向映射、开关机语义、关机改温度自动开机、
   健康/遥控锁位、故障传感器（位图 + 置位号）、设备信息与唯一 ID（用最小 HA 替身）
+- **自动找回 IP**：网段挑选（/22 上限、公网地址不要、拿不到网卡就猜 `/24`）、
+  设备 ID 认人（多台设备不误改）、扫描冷却、`UpdateFailed` 与写命令重试的整条路径
 - **诊断**：导出连接参数 / 状态块 / 故障位图（同样用最小 HA 替身）
 
 ## 9. 排查
@@ -302,11 +324,12 @@ python3 -m unittest discover -s tests -v
 | 现象 | 原因 / 处理 |
 | --- | --- |
 | 添加集成时报「连不上」 | IP 不对 / 不同网段 / 手机 App 或别的客户端正占着（模块只支持单连接，先把 App 划掉） |
-| 实体长期「不可用」 | 轮询间隔太短被限流，改成 30 秒以上；或空调 IP 变了 |
+| 实体长期「不可用」 | 轮询间隔太短被限流，改成 30 秒以上；或空调 IP 变了（开着「自动找回」的会自动改回来，日志里能查到） |
 | 改温度没反应 | 只支持整度 16–30；半度/越界会被 `INVALID` 拒掉（HA 里步进已固定 1℃） |
 | 开关/模式改了但界面没变 | 下一轮轮询（≤30 秒）会拉回来；也可以在集成上手动「重新加载」 |
 | 想确认主板到底支不支持某字段 | `python3 tools/haier_caps.py <空调IP>`（改一项验一项，立刻还原） |
-| 换了空调 IP / 端口 | 集成 → **配置 → 选项**：改完会现场连一次验证，连不上不会保存（轮询间隔也在这改） |
+| 换了空调 IP / 端口 | 开着「自动找回」就不用管；关掉的话走集成 → **配置 → 选项**（改完会现场连一次验证，连不上不会保存） |
+| 日志里反复「没找到这台空调」 | 空调关机了，或者 HA 和它不在同一个子网（跨 VLAN 扫不到，这情况得做静态 DHCP 绑定） |
 | 想知道故障是什么 | `故障告警` 传感器的属性里有 `bitmap` 与 `set_bits`（置位号：`字节下标×8 + 位下标`，字节内低位在前）。位图含义厂家没公开，别自己猜故障名；日志里故障出现 / 清除各留一条 |
 | 想要「用电量 / 功率」 | 本地通道没有这个数据（见 §11）。要么外部计量（计量插座 / PZEM / Shelly EM），要么走云端接口 |
 | **别乱扫 `4dXX`** | 有些命令字是「字段级 set」：`4d08 / 4d19 / 4d1f` 实测会把遥控锁、健康位、`c19` 位改掉。要探就用手册里的 `tools/explore/haier_energy_probe.py`——它内置黑名单，并会自动比对前后状态块 |

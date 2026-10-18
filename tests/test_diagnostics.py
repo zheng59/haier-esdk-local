@@ -27,6 +27,7 @@ class FakeCoordinator:
     host = "192.0.2.10"
     port = 56800
     device_id = "001122334455"
+    rediscover = True
     data = HaierStatus(BLOCK)
     last_fault = FAULT
 
@@ -41,7 +42,8 @@ class TestDiagnostics(unittest.IsolatedAsyncioTestCase):
         dump = await async_get_config_entry_diagnostics(hass, entry)
 
         self.assertEqual(dump["connection"],
-                         {"host": "192.0.2.10", "port": 56800, "device_id": "001122334455"})
+                         {"host": "192.0.2.10", "port": 56800,
+                          "device_id": "001122334455", "rediscover": True})
         self.assertEqual(dump["entry"]["options"], {"scan_interval": 30})
         self.assertEqual(dump["status"]["mode"], "cool")
         self.assertEqual(dump["status"]["raw"], BLOCK.hex())

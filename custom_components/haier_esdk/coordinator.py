@@ -4,26 +4,45 @@
 * 所有请求都过同一把 asyncio 锁；
 * 每次操作开一个短连接，用完立刻关；
 * 读状态时顺手把模块连接时主动推来的故障位图留下来（省一次往返）。
+
+另外负责「IP 变了自动找回」：轮询连不上时扫一遍本地网段（见 discovery.py），
+用设备 ID（MAC）认人，认到了就把条目里的 host 改掉，下一次轮询就能连上。
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 from datetime import timedelta
+from time import monotonic
 from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .client import DEFAULT_MAC, HaierClient, HaierError
-from .const import (CONF_DEVICE_ID, CONF_HOST, CONF_MAC, CONF_PORT, CONF_SCAN_INTERVAL,
-                    DEFAULT_PORT, DEFAULT_SCAN_INTERVAL, DOMAIN)
+from . import discovery
+from .client import DEFAULT_MAC, HaierClient, HaierCommandRejected, HaierError
+from .const import (CONF_DEVICE_ID, CONF_HOST, CONF_MAC, CONF_PORT, CONF_REDISCOVER,
+                    CONF_SCAN_INTERVAL, DEFAULT_PORT, DEFAULT_REDISCOVER,
+                    DEFAULT_SCAN_INTERVAL, DOMAIN)
 from .protocol import TYPE_ALARM, HaierStatus, alarm_bits
 
 _LOGGER = logging.getLogger(__name__)
 
 Job = Callable[[HaierClient], HaierStatus]
+
+# 两次「找 IP」之间至少隔这么久（秒）：空调关机 / 真不在网里的时候别一直扫网段
+DISCOVERY_COOLDOWN = 300.0            # 之前连通过（大概率就是 IP 变了）→ 5 分钟扫一次
+NEVER_CONNECTED_COOLDOWN = 900.0      # 本次启动从没连上过（关机 / 还没配好）→ 15 分钟扫一次
+# entry_id → 上次扫描时间。放模块级：条目重试会重建协调器，冷却不能跟着重置
+_LAST_SCAN: dict[str, float] = {}
+
+# 连不上 / 断了 / 超时都算「链路问题」，值得去找 IP；INVALID（命令被拒）不算
+NetworkError = (HaierError, OSError, TimeoutError)
+
+
+def _is_network_error(exc: BaseException) -> bool:
+    return not isinstance(exc, HaierCommandRejected)
 
 
 class HaierCoordinator(DataUpdateCoordinator[HaierStatus]):
@@ -38,25 +57,49 @@ class HaierCoordinator(DataUpdateCoordinator[HaierStatus]):
         super().__init__(hass, _LOGGER,
                          name=f"{DOMAIN}-{host}",
                          update_interval=timedelta(seconds=interval))
+        self.entry = entry
         self.host, self.port = host, port
         self.mac: bytes = (entry.data.get(CONF_MAC) or DEFAULT_MAC)
         if isinstance(self.mac, str):
             self.mac = self.mac.encode("ascii")
         self.device_id: str | None = entry.data.get(CONF_DEVICE_ID)
+        self.rediscover: bool = bool(entry.options.get(
+            CONF_REDISCOVER, entry.data.get(CONF_REDISCOVER, DEFAULT_REDISCOVER)))
         self.last_fault: bytes = b""
         self._lock = asyncio.Lock()
+        self._ever_ok = False
 
     # ------------------------------------------------------------------ 读
     async def _async_update_data(self) -> HaierStatus:
         try:
-            return await self._run(lambda client: client.read_status())
-        except HaierError as exc:
+            return await self._read()
+        except NetworkError as exc:
+            # 连不上：可能只是空调换了 IP —— 找回来再读一次
+            if not _is_network_error(exc) or not await self._async_rediscover():
+                raise UpdateFailed(str(exc)) from exc
+        try:
+            return await self._read()
+        except NetworkError as exc:
             raise UpdateFailed(str(exc)) from exc
+
+    async def _read(self) -> HaierStatus:
+        status = await self._run(lambda client: client.read_status())
+        self._ever_ok = True
+        return status
 
     # ------------------------------------------------------------------ 写
     async def async_write(self, job: Job) -> HaierStatus:
-        """写操作：异常向上抛给实体（不吞成 UpdateFailed）。"""
-        status = await self._run(job)
+        """写操作：异常向上抛给实体（不吞成 UpdateFailed）。
+
+        如果是「连不上」（IP 刚变 / 断了一下），先找一次 IP 再重试一遍 ——
+        用户点的开关不该白点。
+        """
+        try:
+            status = await self._run(job)
+        except NetworkError as exc:
+            if not _is_network_error(exc) or not await self._async_rediscover():
+                raise
+            status = await self._run(job)
         self.async_set_updated_data(status)
         return status
 
@@ -88,6 +131,66 @@ class HaierCoordinator(DataUpdateCoordinator[HaierStatus]):
                 elif self.last_fault:
                     _LOGGER.info("空调故障已清除（原位图 %s）", self.last_fault.hex())
             self.last_fault = fault
+
+    # ------------------------------------------------------------------ IP 变了自动找回
+    async def _async_rediscover(self) -> bool:
+        """扫本地网段，用设备 ID（MAC）把同一台空调找回来，并改掉条目里的 IP。
+
+        返回 True 表示「IP 已更新，可以重试一次」。任何一步失败都只当没找到 ——
+        轮询该失败还是失败，不能因为扫描把轮询搞挂。
+        """
+        if not self.rediscover:
+            return False
+        now = monotonic()
+        cooldown = DISCOVERY_COOLDOWN if self._ever_ok else NEVER_CONNECTED_COOLDOWN
+        last = _LAST_SCAN.get(self.entry.entry_id)
+        if last is not None and now - last < cooldown:
+            return False
+        _LAST_SCAN[self.entry.entry_id] = now       # 先占坑：条目重试时不会连环扫
+
+        _LOGGER.warning("连不上 %s，开始在本地网段里找设备 %s …（%s）", self.host,
+                        self.device_id or "（设备 ID 未知）",
+                        "之前是通的" if self._ever_ok else "本次启动还没连上过")
+        try:
+            found = await discovery.async_find_device(
+                self.hass, self.device_id, self.port, hint_host=self.host)
+        except Exception as exc:                    # noqa: BLE001 扫描出错不许影响轮询
+            _LOGGER.debug("扫网段失败：%s", exc)
+            return False
+
+        if found is None:
+            _LOGGER.warning("没找到这台空调（关机了 / 换了网段 / 不在同一个子网？），"
+                            "%d 秒后再试", int(cooldown))
+            return False
+        if found == self.host:
+            _LOGGER.warning("设备 %s 还在 %s：连不上的原因不是 IP 变了（端口被占 / 网络不通？）",
+                            self.device_id, found)
+            return False
+
+        old, self.host = self.host, found
+        self._update_entry_host(old, found)
+        return True
+
+    def _update_entry_host(self, old: str, new: str) -> None:
+        """把新 IP 写回条目选项（写回后 host 会一直是这个值，重启也不丢）。"""
+        options = dict(self.entry.options)
+        options[CONF_HOST] = new
+        options.setdefault(CONF_PORT, self.port)
+        self.hass.config_entries.async_update_entry(self.entry, options=options)
+        _LOGGER.warning("空调 IP 变了：%s → %s，已自动更新到集成配置里（不用手工改）", old, new)
+
+    def matches_entry(self, entry: ConfigEntry) -> bool:
+        """条目的连接参数和本协调器现在用的一致吗？
+
+        自动重发现改完 IP 后 HA 会通知更新监听器；这时参数其实已经生效了，
+        不需要（也不应该）重载条目 —— 靠这个方法识别出来。
+        """
+        host = entry.options.get(CONF_HOST, entry.data.get(CONF_HOST))
+        port = int(entry.options.get(CONF_PORT, entry.data.get(CONF_PORT, DEFAULT_PORT)))
+        interval = int(entry.options.get(
+            CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)))
+        return (host == self.host and port == self.port
+                and interval == int(self.update_interval.total_seconds()))
 
     # ------------------------------------------------------------------ 供配置流程复用
     @staticmethod
