@@ -204,7 +204,11 @@ def select_device(found: Sequence[Probe], device_id: str | None) -> str | None:
 
 # ---------------------------------------------------------------------- 给协调器用
 def _adapters(hass: Any) -> list[Any]:
-    """网卡列表（HA 的 network 集成提供）；拿不到就走 fallback，不影响轮询。"""
+    """网卡列表（HA 的 network 集成提供）；拿不到就走 fallback，不影响轮询。
+
+    这里 import 了 HA 的 ``network`` 集成 —— manifest 里对应声明
+    ``after_dependencies: ["network"]``（hassfest 会查静态 import，漏了直接报错）。
+    """
     try:
         from homeassistant.components.network import async_get_adapters
     except ImportError:                           # pragma: no cover - 老版本 / 测试环境

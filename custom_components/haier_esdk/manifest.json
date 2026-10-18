@@ -1,6 +1,7 @@
 {
   "domain": "haier_esdk",
   "name": "Haier eSDK Local",
+  "after_dependencies": ["network"],
   "codeowners": ["@zheng59"],
   "config_flow": true,
   "dependencies": [],
